@@ -1,0 +1,315 @@
+//Option Explicit
+////////////////////////////////////////////////
+
+FUNCTION TAP_IMG(img_name) 
+Dim x,y
+Dim r100 = RANDOM(1000)*0.01
+PRINT r100 //debug
+
+ IFB CHKIMG(img_name,-1)    // 指定した画像があるか
+   x=G_IMG_X                // 画像の座標をxへ代入
+   y=G_IMG_Y                // 画像の座標をyへ代入
+   PRINT "指定された画像が見つかりました。タップします。<#CR>"
+   PRINT "X座標 : " + X
+   PRINT "Y座標 : " + Y
+   MMV(x+r100, y+r100)
+   BTN(LEFT, CLICK)
+   RESULT = 1
+ ELSE
+   PRINT "指定された画像が無いのでタップできませんでした。"
+   RESULT = 0
+ ENDIF
+
+FEND
+
+////////////////////////////////////////////////
+
+FUNCTION ACTIVATE_WINDOW(window_id)
+Dim id
+ id = GETID(window_id) // chromeのIDを取得
+ IFB STATUS(id, ST_ICON) // ウィンドウがアイコン状態（最小化）かチェック
+  CTRLWIN(id, NORMAL) // 表示を通常にする
+ ENDIF
+ IFB !STATUS(id, ST_ACTIVE) // ウィンドウがアクティブかチェック
+  CTRLWIN(id, ACTIVATE) // アクティブにする
+ ENDIF
+ RESULT = INT(id)
+
+FEND
+
+
+////////////////////////////////////////////////
+
+PROCEDURE CHK_CARDS 
+ PRINT "カードの柄をチェックします"
+
+ Dim id = ACTIVATE_WINDOW("chrome")
+ Dim ptn[] = "c","d","h","s"
+ Dim h,i,j,k,l,x,target
+ PUBLIC cards_x[] = 194, 265, 334, 404, 474
+ PUBLIC cards_ptn[Length(cards_x)],cards_num[Length(cards_x)]
+ Dim flag = 0
+ Dim y = 403
+
+ FOR i = 0 TO Length(cards_x)-1 
+   x = cards_x[i]
+   FOR j=0 TO Length(ptn)-1
+     FOR k=1 TO 13
+     target = "img/"+i+"-"+ptn[j]+k+".bmp"
+       TRY
+        ifb CHKIMG(target,-1,x-5,y-5,x+90,y+97,-1)
+        flag = 1
+        cards_num[i] = k
+        cards_ptn[i] = ptn[j]
+//        PRINT ptn[j]+k //debug
+        IF flag = 1 THEN BREAK 2
+        endif
+       EXCEPT
+       ENDTRY
+     NEXT
+   NEXT
+   target = "img/"+i+"-"+14+".bmp"
+   TRY
+      ifb CHKIMG(target,-1,x-5,y-5,x+90,y+97,-1)
+      cards_num[i] = "joker"
+      cards_ptn[i] = "joker"
+//      PRINT "joker" //debug
+      flag = 1
+    endif
+   EXCEPT
+   ENDTRY
+   ifb flag = 1
+   flag = 0
+   else
+      PRINT "持ってなさそうなのでとりあえず保存します。"
+      SAVEIMG(i+"-"+k+".bmp",id,x,y,60,87)
+      MMV(x,y)
+   endif
+  PRINT i+1+"列目は"+cards_ptn[i]+cards_num[i]
+ NEXT
+FEND
+
+
+////////////////////////////////////////////////
+
+PROCEDURE TAP_THIS(x,y) 
+  Dim r = RANDOM(1000)*0.001
+  Dim r10 = RANDOM(1000)*0.01
+  MMV(x+r10, y+r10)
+  SLEEP(r)
+  BTN(LEFT, CLICK)
+FEND
+
+////////////////////////////////////////////////
+//ストレートチェック関数を定義する
+
+FUNCTION CHK_STRAIGHT
+
+  /////下処理/////
+  Dim array[4]
+  FOR i = 0 TO Length(array)-1
+    IFB cards_num[i] = 1
+      array[i] = 14 //1は14として扱う。K→Aは役になるがA→2の繋がりは役にならないため
+    ELSEIF cards_num[i] = "joker"
+      array[i] = 0
+    ELSE
+      array[i] = cards_num[i]
+    ENDIF
+  NEXT
+
+  /////配列をSORTする/////
+  FOR j = 0 TO Length(array)-1
+    FOR i = 0 TO Length(array)-2
+      IFB array[i] < array[i+1]
+        high = array[i+1]
+        low = array[i]
+      ELSE
+        high = array[i]
+        low = array[i+1]
+      ENDIF
+      array[i] = low
+      array[i+1] = high
+    NEXT
+  NEXT
+
+  /////ジョーカーをイイカンジの数に変えてみる/////
+  IFB array[0] = 0 
+    array[0] = array[Length(array)-1] + 1
+    FOR i = 1 TO Length(array)-2
+      IFB array[i+1] - array[i] = 2
+        array[0] = array[i] + 1
+      ENDIF
+    NEXT
+    /////配列をもう一度SORTする/////
+    FOR j = 0 TO Length(array)-1
+      FOR i = 0 TO Length(array)-2
+        IFB array[i] < array[i+1]
+          high = array[i+1]
+          low = array[i]
+        ELSE
+          high = array[i]
+          low = array[i+1]
+        ENDIF
+        array[i] = low
+        array[i+1] = high
+      NEXT
+    NEXT
+  ENDIF
+
+  /////ストレートか否かを返す/////
+  IFB (array[4] - array[3] = 1) AND (array[3] - array[2] = 1) AND (array[2] - array[1] = 1) AND (array[1] - array[0] = 1)
+   RESULT = 1
+  ELSE
+   RESULT = 0
+  ENDIF
+
+FEND
+////////////////////////////////////////////////
+
+PROCEDURE CHK_HAND 
+CHK_CARDS
+dim x[4]
+  /////ジョーカーチェック
+  FOR i = 0 TO Length(cards_num)-1
+    IFB cards_num[i] = "joker"
+    PRINT "ジョーカーハケーン!"
+    x[i] = cards_x[i]
+    ENDIF
+  NEXT
+  /////フラッシュチェック
+  IFB (cards_ptn[0] = cards_ptn[1]) AND (cards_ptn[0] = cards_ptn[2]) AND (cards_ptn[0] = cards_ptn[3]) AND (cards_ptn[0] = cards_ptn[4])
+  PRINT "フラッシュだこれ"
+   x[0] = cards_x[0]
+   x[1] = cards_x[1]
+   x[2] = cards_x[2]
+   x[3] = cards_x[3]
+   x[4] = cards_x[4]
+  /////ストレートチェック
+  ELSEIF CHK_STRAIGHT() = 1
+  PRINT "ストレートだこれ"
+   x[0] = cards_x[0]
+   x[1] = cards_x[1]
+   x[2] = cards_x[2]
+   x[3] = cards_x[3]
+   x[4] = cards_x[4]
+  /////フォーカードチェック フラッシュ狙いチェック 5ptn
+  ELSEIF ((cards_num[0] = cards_num[1]) AND (cards_num[0] = cards_num[2]) AND (cards_num[0] = cards_num[3])) OR ((cards_ptn[0] = cards_ptn[1]) AND (cards_ptn[0] = cards_ptn[2]) AND (cards_ptn[0] = cards_ptn[3]))
+   x[0] = cards_x[0]
+   x[1] = cards_x[1]
+   x[2] = cards_x[2]
+   x[3] = cards_x[3]
+  ELSEIF ((cards_num[0] = cards_num[1]) AND (cards_num[0] = cards_num[2]) AND (cards_num[0] = cards_num[4])) OR ((cards_ptn[0] = cards_ptn[1]) AND (cards_ptn[0] = cards_ptn[2]) AND (cards_ptn[0] = cards_ptn[4]))
+   x[0] = cards_x[0]
+   x[1] = cards_x[1]
+   x[2] = cards_x[2]
+   x[4] = cards_x[4]
+  ELSEIF ((cards_num[0] = cards_num[1]) AND (cards_num[0] = cards_num[3]) AND (cards_num[0] = cards_num[4])) OR ((cards_ptn[0] = cards_ptn[1]) AND (cards_ptn[0] = cards_ptn[3]) AND (cards_ptn[0] = cards_ptn[4]))
+   x[0] = cards_x[0]
+   x[1] = cards_x[1]
+   x[3] = cards_x[3]
+   x[4] = cards_x[4]
+  ELSEIF ((cards_num[0] = cards_num[2]) AND (cards_num[0] = cards_num[3]) AND (cards_num[0] = cards_num[4])) OR ((cards_ptn[0] = cards_ptn[2]) AND (cards_ptn[0] = cards_ptn[3]) AND (cards_ptn[0] = cards_ptn[4]))
+   x[0] = cards_x[0]
+   x[2] = cards_x[2]
+   x[3] = cards_x[3]
+   x[4] = cards_x[4]
+  ELSEIF ((cards_num[1] = cards_num[2]) AND (cards_num[1] = cards_num[3]) AND (cards_num[1] = cards_num[4])) OR ((cards_ptn[1] = cards_ptn[2]) AND (cards_ptn[1] = cards_ptn[3]) AND (cards_ptn[1] = cards_ptn[4]))
+   x[1] = cards_x[1]
+   x[2] = cards_x[2]
+   x[3] = cards_x[3]
+   x[4] = cards_x[4]
+  ELSE
+    /////ペアチェック 10ptn  (数が同じだったら全部タップするのでスリーカードもツーペアもフルハウスも拾える)
+    IFB cards_num[0] = cards_num[1] 
+     x[0] = cards_x[0]
+     x[1] = cards_x[1]
+    ENDIF
+    IFB cards_num[0] = cards_num[2] 
+     x[0] = cards_x[0]
+     x[2] = cards_x[2]
+    ENDIF
+    IFB cards_num[0] = cards_num[3] 
+     x[0] = cards_x[0]
+     x[3] = cards_x[3]
+    ENDIF
+    IFB cards_num[0] = cards_num[4] 
+     x[0] = cards_x[0]
+     x[4] = cards_x[4]
+    ENDIF
+    IFB cards_num[1] = cards_num[2] 
+     x[1] = cards_x[1]
+     x[2] = cards_x[2]
+    ENDIF
+    IFB cards_num[1] = cards_num[3] 
+     x[1] = cards_x[1]
+     x[3] = cards_x[3]
+    ENDIF
+    IFB cards_num[1] = cards_num[4] 
+     x[1] = cards_x[1]
+     x[4] = cards_x[4]
+    ENDIF
+    IFB cards_num[2] = cards_num[3] 
+     x[2] = cards_x[2]
+     x[3] = cards_x[3]
+    ENDIF
+    IFB cards_num[2] = cards_num[4] 
+     x[2] = cards_x[2]
+     x[4] = cards_x[4]
+    ENDIF
+    IFB cards_num[3] = cards_num[4] 
+     x[3] = cards_x[3]
+     x[4] = cards_x[4]
+    ENDIF
+  ENDIF
+  FOR i = 0 TO Length(x)-1
+    IFB x[i] <> 0
+      TAP_THIS(x[i], 403)
+    ENDIF
+  NEXT
+FEND
+
+////////////////////////////////////////////////
+
+
+PROCEDURE CHK_CARDS_DOUBLEUP
+ PRINT "ダブルアップも～ど"
+
+ Dim id = ACTIVATE_WINDOW("chrome")
+ Dim ptn[] = "c","d","h","s"
+ Dim h,i,j,k,l,x,target
+ PUBLIC doubleup_x[] = 260,260
+ PUBLIC doubleup_ptn,doubleup_num
+ Dim flag = 0
+ Dim y = 366
+
+ FOR i = 0 TO Length(doubleup_x)-1 
+   x = doubleup_x[i]
+   FOR j=0 TO Length(ptn)-1
+     FOR k=1 TO 13
+     target = "img/dub-"+i+"-"+ptn[j]+k+".bmp"
+       TRY
+        ifb CHKIMG(target,-1,x-10,y-10,x+108,y+142,-1)
+        PRINT target
+        flag = 1
+        doubleup_num = k
+        doubleup_ptn = ptn[j]
+        IF flag = 1 THEN BREAK 2
+        endif
+       EXCEPT
+       ENDTRY
+     NEXT
+   NEXT
+ NEXT
+   ifb flag = 1
+   flag = 0
+   else
+      PRINT "持ってなさそうなのでとりあえず保存します。"
+      SAVEIMG("dub-"+k+i+".bmp",id,x+2,y+1,85,120)
+      MMV(x,y)
+   endif
+ PRINT "カードは"+doubleup_ptn+doubleup_num
+FEND
+
+
+
+
